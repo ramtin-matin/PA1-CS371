@@ -129,6 +129,69 @@ void run_client() {
     printf("Total Request Rate: %f messages/s\n", total_request_rate);
 }
 
+
+/* ---------------- SINGLE-THREADED SERVER ---------------- */
+
+void run_server() {
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd == -1) {
+        perror("socket");
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(server_port);
+
+    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+        perror("bind");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(server_fd, SOMAXCONN) == -1) {
+        perror("listen");
+        exit(EXIT_FAILURE);
+    }
+
+    int epoll_fd = epoll_create1(0);
+    struct epoll_event event, events[MAX_EVENTS];
+    event.events = EPOLLIN;
+    event.data.fd = server_fd;
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event);
+
+    printf("Single-threaded server started on port %d\n", server_port);
+
+    while (1) {
+        int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, 2000);
+        for (int i = 0; i < nfds; i++) {
+            if (events[i].data.fd == server_fd) {
+                int client_fd = accept(server_fd, NULL, NULL);
+                if (client_fd != -1) {
+                    printf("Accepted new client (fd: %d)\n", client_fd);
+                    struct epoll_event client_event;
+                    client_event.events = EPOLLIN;
+                    client_event.data.fd = client_fd;
+                    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &client_event);
+                }
+            } else {
+                char buf[MESSAGE_SIZE];
+                int bytes_received = recv(events[i].data.fd, buf, MESSAGE_SIZE, 0);
+                if (bytes_received > 0) {
+                    send(events[i].data.fd, buf, bytes_received, 0);
+                } else {
+                    close(events[i].data.fd);
+                    epoll_ctl(epoll_fd, EPOLL_CTL_DEL, events[i].data.fd, NULL);
+                    printf("Client disconnected\n");
+                }
+            }
+        }
+    }
+}
+
+
+
 /* ---------------- MULTI-THREADED SERVER (Bonus Implementation) ---------------- */
 
 typedef struct {
