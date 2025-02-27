@@ -130,6 +130,30 @@ void run_client() {
      * Create sockets and epoll instances for client threads
      * and connect these sockets of client threads to the server
      */
+    for (int i = 0; i < num_client_threads; i++) {
+        thread_data[i].socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+        if (thread_data[i].socket_fd == -1) {
+            perror("socket");
+            exit(EXIT_FAILURE);
+        }
+        thread_data[i].epoll_fd = epoll_create1(0);
+        if (thread_data[i].epoll_fd == -1) {
+            perror("epoll_create1");
+            exit(EXIT_FAILURE);
+        }
+
+         memset(&server_addr, 0, sizeof(server_addr));
+        server_addr.sin_family = AF_INET;
+        server_addr.sin_port = htons(server_port);
+        inet_pton(AF_INET, server_ip, &server_addr.sin_addr);
+
+        if (connect(thread_data[i].socket_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+            perror("connect");
+            exit(EXIT_FAILURE);
+        }
+
+        pthread_create(&threads[i], NULL, client_thread_func, &thread_data[i]);
+    }
     
     // Hint: use thread_data to save the created socket and epoll instance for each thread
     // You will pass the thread_data to pthread_create() as below
