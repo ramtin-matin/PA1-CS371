@@ -68,15 +68,34 @@ void *client_thread_func(void *arg) {
     // Hint 1: register the "connected" client_thread's socket in the its epoll instance
     // Hint 2: use gettimeofday() and "struct timeval start, end" to record timestamp, which can be used to calculated RTT.
 
-    /* TODO:
+   /* TODO:
      * It sends messages to the server, waits for a response using epoll,
      * and measures the round-trip time (RTT) of this request-response.
      */
+    event.events = EPOLLIN;
+    event.data.fd = data->socket_fd;
+    int nfds = epoll_wait(data->epoll_fd, events, MAX_EVENTS, -1);
+    for (long i = 0; i < num_requests; i++) {
+        gettimeofday(&start, NULL); // Record start time
+         for (int j = 0; j < nfds; j++) {
+            if (events[j].data.fd == data->socket_fd) {
+                if (recv(data->socket_fd, recv_buf, MESSAGE_SIZE, 0) > 0) {
+                    gettimeofday(&end, NULL); // Record end time
+                    long long rtt = (end.tv_sec - start.tv_sec) * 1000000LL + (end.tv_usec - start.tv_usec);
+                    data->total_rtt += rtt;
+                    data->total_messages++;
+                }
+            }
+        }
+    }
+
  
     /* TODO:
      * The function exits after sending and receiving a predefined number of messages (num_requests). 
      * It calculates the request rate based on total messages and RTT
      */
+
+    data->request_rate = data->total_messages / (data->total_rtt / 1000000);
 
     return NULL;
 }
