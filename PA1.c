@@ -59,6 +59,7 @@ typedef struct {
  * This function runs in a separate client thread to handle communication with the server
  */
 void *client_thread_func(void *arg) {
+    printf("CLIENT_THREAD_FUNC is RUNNING\n");
     client_thread_data_t *data = (client_thread_data_t *)arg;
     struct epoll_event event, events[MAX_EVENTS];
     char send_buf[MESSAGE_SIZE] = "ABCDEFGHIJKMLNOP"; /* Send 16-Bytes message every time */
@@ -104,6 +105,7 @@ void *client_thread_func(void *arg) {
  * collect performance data of each thread, and compute aggregated metrics of all threads.
  */
 void run_client() {
+    printf("RUN_CLIENT is RUNNING\n");
     pthread_t threads[num_client_threads];
     client_thread_data_t thread_data[num_client_threads];
     struct sockaddr_in server_addr;
@@ -157,6 +159,7 @@ void run_client() {
 }
 
 void run_server() {
+    printf("RUN_SERVER is RUNNING\n");
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         perror("socket");
@@ -204,6 +207,7 @@ void run_server() {
 }
 
 int main(int argc, char *argv[]) {
+    printf("MAIN is RUNNING\n");
     if (argc > 1 && strcmp(argv[1], "server") == 0) {
         if (argc > 2) server_ip = argv[2];
         if (argc > 3) server_port = atoi(argv[3]);
