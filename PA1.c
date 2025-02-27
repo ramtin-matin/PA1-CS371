@@ -97,6 +97,14 @@ void *client_thread_func(void *arg) {
 
     data->request_rate = data->total_messages / (data->total_rtt / 1000000);
 
+    pthread_mutex_lock(&stats_lock);
+    overall_total_rtt += data->total_rtt;
+    overall_total_messages += data->total_messages;
+    pthread_mutex_unlock(&stats_lock);
+
+    close(data->socket_fd);
+    close(data->epoll_fd);
+
     return NULL;
 }
 
