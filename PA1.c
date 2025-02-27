@@ -65,18 +65,11 @@ void *client_thread_func(void *arg) {
     char recv_buf[MESSAGE_SIZE];
     struct timeval start, end;
 
-    // Hint 1: register the "connected" client_thread's socket in the its epoll instance
-    // Hint 2: use gettimeofday() and "struct timeval start, end" to record timestamp, which can be used to calculated RTT.
-
-   /* TODO:
-     * It sends messages to the server, waits for a response using epoll,
-     * and measures the round-trip time (RTT) of this request-response.
-     */
     event.events = EPOLLIN;
     event.data.fd = data->socket_fd;
     for (long i = 0; i < num_requests; i++) {
         gettimeofday(&start, NULL); // Record start time
-          if (send(data->socket_fd, send_buf, MESSAGE_SIZE, 0) == -1) {
+        if (send(data->socket_fd, send_buf, MESSAGE_SIZE, 0) == -1) {
             perror("send");
             continue;
         }
@@ -86,7 +79,7 @@ void *client_thread_func(void *arg) {
             perror("epoll_wait");
             continue;
         }
-         for (int j = 0; j < nfds; j++) {
+        for (int j = 0; j < nfds; j++) {
             if (events[j].data.fd == data->socket_fd) {
                 if (recv(data->socket_fd, recv_buf, MESSAGE_SIZE, 0) > 0) {
                     gettimeofday(&end, NULL); // Record end time
@@ -98,13 +91,7 @@ void *client_thread_func(void *arg) {
         }
     }
 
- 
-    /* TODO:
-     * The function exits after sending and receiving a predefined number of messages (num_requests). 
-     * It calculates the request rate based on total messages and RTT
-     */
-
-    data->request_rate = data->total_messages / (data->total_rtt / 1000000);
+    data->request_rate = data->total_messages / (data->total_rtt / 1000000.0);
 
     close(data->socket_fd);
     close(data->epoll_fd);
@@ -114,17 +101,17 @@ void *client_thread_func(void *arg) {
 
 /*
  * This function orchestrates multiple client threads to send requests to a server,
- * collect performance data of each threads, and compute aggregated metrics of all threads.
+ * collect performance data of each thread, and compute aggregated metrics of all threads.
  */
 void run_client() {
     pthread_t threads[num_client_threads];
     client_thread_data_t thread_data[num_client_threads];
     struct sockaddr_in server_addr;
 
-    /* TODO:
-     * Create sockets and epoll instances for client threads
-     * and connect these sockets of client threads to the server
-     */
+    long long total_rtt = 0;
+    long total_messages = 0;
+    float total_request_rate = 0.0;
+
     for (int i = 0; i < num_client_threads; i++) {
         thread_data[i].socket_fd = socket(AF_INET, SOCK_STREAM, 0);
         if (thread_data[i].socket_fd == -1) {
@@ -149,28 +136,27 @@ void run_client() {
 
         pthread_create(&threads[i], NULL, client_thread_func, &thread_data[i]);
     }
-    
-    // Hint: use thread_data to save the created socket and epoll instance for each thread
-    // You will pass the thread_data to pthread_create() as below
+
     for (int i = 0; i < num_client_threads; i++) {
-        pthread_create(&threads[i], NULL, client_thread_func, &thread_data[i]);
+        pthread_join(threads[i], NULL);
     }
 
-    /* TODO:
-     * Wait for client threads to complete and aggregate metrics of all client threads
-     */
+    for (int i = 0; i < num_client_threads; i++) {
+        total_rtt += thread_data[i].total_rtt;
+        total_messages += thread_data[i].total_messages;
+        total_request_rate += thread_data[i].request_rate;
+    }
 
-    printf("Average RTT: %lld us\n", total_rtt / total_messages);
+    if (total_messages > 0) {
+        printf("Average RTT: %lld us\n", total_rtt / total_messages);
+    } else {
+        printf("Average RTT: N/A (no messages sent)\n");
+    }
+
     printf("Total Request Rate: %f messages/s\n", total_request_rate);
 }
 
 void run_server() {
-
-    /* TODO:
-     * Server creates listening socket and epoll instance.
-     * Server registers the listening socket to epoll
-     */
-
     int server_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (server_fd == -1) {
         perror("socket");
@@ -200,6 +186,8 @@ void run_server() {
     }
 
     struct epoll_event event;
+    struct epoll_event events[MAX_EVENTS];
+
     event.events = EPOLLIN;
     event.data.fd = server_fd;
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event) == -1) {
@@ -207,10 +195,10 @@ void run_server() {
         exit(EXIT_FAILURE);
     }
 
-    /* Server's run-to-completion event loop */
     while (1) {
         int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
         for (int i = 0; i < nfds; i++) {
+            // TODO: Handle new connections and messages from clients
         }
     }
 }
