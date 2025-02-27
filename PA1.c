@@ -48,11 +48,11 @@ int num_requests = 1000000;
  * This structure is used to store per-thread data in the client
  */
 typedef struct {
-    int epoll_fd;        /* File descriptor for the epoll instance, used for monitoring events on the socket. */
-    int socket_fd;       /* File descriptor for the client socket connected to the server. */
-    long long total_rtt; /* Accumulated Round-Trip Time (RTT) for all messages sent and received (in microseconds). */
-    long total_messages; /* Total number of messages sent and received. */
-    float request_rate;  /* Computed request rate (requests per second) based on RTT and total messages. */
+    int epoll_fd;
+    int socket_fd;
+    long long total_rtt;
+    long total_messages;
+    float request_rate;
 } client_thread_data_t;
 
 /*
@@ -62,20 +62,22 @@ void *client_thread_func(void *arg) {
     printf("CLIENT_THREAD_FUNC is RUNNING\n");
     client_thread_data_t *data = (client_thread_data_t *)arg;
     struct epoll_event event, events[MAX_EVENTS];
-    char send_buf[MESSAGE_SIZE] = "ABCDEFGHIJKMLNOP"; /* Send 16-Bytes message every time */
+    char send_buf[MESSAGE_SIZE] = "ABCDEFGHIJKMLNOP";
     char recv_buf[MESSAGE_SIZE];
     struct timeval start, end;
 
     event.events = EPOLLIN;
     event.data.fd = data->socket_fd;
+    epoll_ctl(data->epoll_fd, EPOLL_CTL_ADD, data->socket_fd, &event);
+
     for (long i = 0; i < num_requests; i++) {
-        gettimeofday(&start, NULL); // Record start time
+        gettimeofday(&start, NULL);
         if (send(data->socket_fd, send_buf, MESSAGE_SIZE, 0) == -1) {
             perror("send");
             continue;
         }
 
-        int nfds = epoll_wait(data->epoll_fd, events, MAX_EVENTS, -1);
+        int nfds = epoll_wait(data->epoll_fd, events, MAX_EVENTS, 2000);  // Timeout after 2 sec
         if (nfds == -1) {
             perror("epoll_wait");
             continue;
@@ -83,27 +85,23 @@ void *client_thread_func(void *arg) {
         for (int j = 0; j < nfds; j++) {
             if (events[j].data.fd == data->socket_fd) {
                 if (recv(data->socket_fd, recv_buf, MESSAGE_SIZE, 0) > 0) {
-                    gettimeofday(&end, NULL); // Record end time
+                    gettimeofday(&end, NULL);
                     long long rtt = (end.tv_sec - start.tv_sec) * 1000000LL + (end.tv_usec - start.tv_usec);
                     data->total_rtt += rtt;
                     data->total_messages++;
+                    printf("Thread %ld received response %ld\n", pthread_self(), i);
                 }
             }
         }
     }
 
-    data->request_rate = data->total_messages / (data->total_rtt / 1000000.0);
+    data->request_rate = (data->total_messages > 0) ? (data->total_messages / (data->total_rtt / 1000000.0)) : 0;
 
     close(data->socket_fd);
     close(data->epoll_fd);
-
     return NULL;
 }
 
-/*
- * This function orchestrates multiple client threads to send requests to a server,
- * collect performance data of each thread, and compute aggregated metrics of all threads.
- */
 void run_client() {
     printf("RUN_CLIENT is RUNNING\n");
     pthread_t threads[num_client_threads];
@@ -149,12 +147,8 @@ void run_client() {
         total_request_rate += thread_data[i].request_rate;
     }
 
-    if (total_messages > 0) {
-        printf("Average RTT: %lld us\n", total_rtt / total_messages);
-    } else {
-        printf("Average RTT: N/A (no messages sent)\n");
-    }
-
+    printf("Total Messages: %ld, Total RTT: %lld us\n", total_messages, total_rtt);
+    printf("Average RTT: %lld us\n", (total_messages > 0) ? (total_rtt / total_messages) : 0);
     printf("Total Request Rate: %f messages/s\n", total_request_rate);
 }
 
@@ -193,15 +187,26 @@ void run_server() {
 
     event.events = EPOLLIN;
     event.data.fd = server_fd;
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event) == -1) {
-        perror("epoll_ctl");
-        exit(EXIT_FAILURE);
-    }
+    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event);
 
     while (1) {
-        int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+        int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, 2000);
         for (int i = 0; i < nfds; i++) {
-            // TODO: Handle new connections and messages from clients
+            if (events[i].data.fd == server_fd) {
+                int client_fd = accept(server_fd, NULL, NULL);
+                if (client_fd != -1) {
+                    printf("Accepted new client!\n");
+                    struct epoll_event client_event;
+                    client_event.events = EPOLLIN;
+                    client_event.data.fd = client_fd;
+                    epoll_ctl(epoll_fd, EPOLL_CTL_ADD, client_fd, &client_event);
+                }
+            } else {
+                char buf[MESSAGE_SIZE];
+                recv(events[i].data.fd, buf, MESSAGE_SIZE, 0);
+                send(events[i].data.fd, buf, MESSAGE_SIZE, 0);
+                printf("Server echoed message\n");
+            }
         }
     }
 }
@@ -209,20 +214,11 @@ void run_server() {
 int main(int argc, char *argv[]) {
     printf("MAIN is RUNNING\n");
     if (argc > 1 && strcmp(argv[1], "server") == 0) {
-        if (argc > 2) server_ip = argv[2];
-        if (argc > 3) server_port = atoi(argv[3]);
-
         run_server();
     } else if (argc > 1 && strcmp(argv[1], "client") == 0) {
-        if (argc > 2) server_ip = argv[2];
-        if (argc > 3) server_port = atoi(argv[3]);
-        if (argc > 4) num_client_threads = atoi(argv[4]);
-        if (argc > 5) num_requests = atoi(argv[5]);
-
         run_client();
     } else {
-        printf("Usage: %s <server|client> [server_ip server_port num_client_threads num_requests]\n", argv[0]);
+        printf("Usage: %s <server|client>\n", argv[0]);
     }
-
     return 0;
 }
