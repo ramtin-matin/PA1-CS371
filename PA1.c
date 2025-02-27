@@ -106,11 +106,6 @@ void *client_thread_func(void *arg) {
 
     data->request_rate = data->total_messages / (data->total_rtt / 1000000);
 
-    pthread_mutex_lock(&stats_lock);
-    overall_total_rtt += data->total_rtt;
-    overall_total_messages += data->total_messages;
-    pthread_mutex_unlock(&stats_lock);
-
     close(data->socket_fd);
     close(data->epoll_fd);
 
@@ -142,7 +137,7 @@ void run_client() {
             exit(EXIT_FAILURE);
         }
 
-         memset(&server_addr, 0, sizeof(server_addr));
+        memset(&server_addr, 0, sizeof(server_addr));
         server_addr.sin_family = AF_INET;
         server_addr.sin_port = htons(server_port);
         inet_pton(AF_INET, server_ip, &server_addr.sin_addr);
@@ -176,12 +171,47 @@ void run_server() {
      * Server registers the listening socket to epoll
      */
 
+    int server_fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (server_fd == -1) {
+        perror("socket");
+        exit(EXIT_FAILURE);
+    }
+
+    struct sockaddr_in server_addr;
+    memset(&server_addr, 0, sizeof(server_addr));
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_addr.s_addr = INADDR_ANY;
+    server_addr.sin_port = htons(server_port);
+
+    if (bind(server_fd, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+        perror("bind");
+        exit(EXIT_FAILURE);
+    }
+
+    if (listen(server_fd, SOMAXCONN) == -1) {
+        perror("listen");
+        exit(EXIT_FAILURE);
+    }
+
+    int epoll_fd = epoll_create1(0);
+    if (epoll_fd == -1) {
+        perror("epoll_create1");
+        exit(EXIT_FAILURE);
+    }
+
+    struct epoll_event event;
+    event.events = EPOLLIN;
+    event.data.fd = server_fd;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, server_fd, &event) == -1) {
+        perror("epoll_ctl");
+        exit(EXIT_FAILURE);
+    }
+
     /* Server's run-to-completion event loop */
     while (1) {
-        /* TODO:
-         * Server uses epoll to handle connection establishment with clients
-         * or receive the message from clients and echo the message back
-         */
+        int nfds = epoll_wait(epoll_fd, events, MAX_EVENTS, -1);
+        for (int i = 0; i < nfds; i++) {
+        }
     }
 }
 
