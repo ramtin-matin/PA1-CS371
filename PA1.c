@@ -17,11 +17,11 @@
 */
 
 /* 
-Please specify the group members here
+Group members:
 
-# Student #1: 
-# Student #2:
-# Student #3: 
+-Ramtin Seyedmatin
+-David Falade
+-Parker Nurick
 
 */
 
