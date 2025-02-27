@@ -74,9 +74,18 @@ void *client_thread_func(void *arg) {
      */
     event.events = EPOLLIN;
     event.data.fd = data->socket_fd;
-    int nfds = epoll_wait(data->epoll_fd, events, MAX_EVENTS, -1);
     for (long i = 0; i < num_requests; i++) {
         gettimeofday(&start, NULL); // Record start time
+          if (send(data->socket_fd, send_buf, MESSAGE_SIZE, 0) == -1) {
+            perror("send");
+            continue;
+        }
+
+        int nfds = epoll_wait(data->epoll_fd, events, MAX_EVENTS, -1);
+        if (nfds == -1) {
+            perror("epoll_wait");
+            continue;
+        }
          for (int j = 0; j < nfds; j++) {
             if (events[j].data.fd == data->socket_fd) {
                 if (recv(data->socket_fd, recv_buf, MESSAGE_SIZE, 0) > 0) {
